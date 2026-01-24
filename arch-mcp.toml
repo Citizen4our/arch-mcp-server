@@ -1,0 +1,40 @@
+## Arch MCP configuration (TOML)
+##
+## By default, this file is read from `./arch-mcp.toml` (current working directory).
+## You can specify a custom path using `--config <path>`.
+## Paths below are relative to `--docs-root`.
+
+# File extensions used to discover diagram sources (case-insensitive).
+# Defaults: ["mdx", "puml", "dot"]
+diagram_extensions = ["mdx", "puml", "dot"]
+
+# File extensions used to discover OpenAPI specs (case-insensitive).
+# Defaults: ["yaml", "yml"]
+openapi_extensions = ["yaml", "yml"]
+
+# Directories scanned for agreement documents.
+agreements = ["docs/backend", "docs/frontend"]
+
+[[projects]]
+name = "project-a"
+erd = ["docs/architecture/project-a/erd"]
+adr = ["docs/architecture/project-a/adr"]
+openapi = ["docs/architecture/project-a/openapi"]
+
+[projects.c4]
+c1 = ["docs/architecture/project-a/c4"]
+c2 = ["docs/architecture/project-a/c4"]
+c3 = ["docs/architecture/project-a/c4"]
+services = ["docs/architecture/project-a/c4/services"]
+
+[[projects]]
+name = "project-b"
+erd = ["docs/architecture/project-b/erd"]
+adr = ["docs/architecture/project-b/adr"]
+openapi = ["docs/architecture/project-b/openapi"]
+
+[projects.c4]
+c1 = ["docs/architecture/project-b/c4"]
+c2 = ["docs/architecture/project-b/c4"]
+c3 = ["docs/architecture/project-b/c4"]
+services = ["docs/architecture/project-b/c4/services"]

@@ -1,0 +1,15 @@
+services:
+  arch-mcp-server:
+    build: .
+    ports:
+      - "8010:8010"
+    command: ["./arch-mcp-server", "--docs-root", "/app/docs/content", "--bind-address", "0.0.0.0:8010", "--rust-log", "info"]
+    volumes:
+      - ./example_docs/docs:/app/docs:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/mcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

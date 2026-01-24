@@ -1,0 +1,2 @@
+[toolchain]
+components = ["rustc", "rust-std", "cargo", "clippy", "rustfmt", "rust-docs"]
