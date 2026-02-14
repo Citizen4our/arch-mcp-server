@@ -37,6 +37,7 @@ pub enum DocumentType {
     ErdDiagram(String),
     AdrDocument(String),
     OpenApiSpec(String),
+    GuideDoc(String),
 }
 
 impl DocumentType {
@@ -51,6 +52,7 @@ impl DocumentType {
             DocumentType::C4Diagram(project) => format!("docs://architecture/{}/c4/", project),
             DocumentType::AdrDocument(project) => format!("docs://architecture/{}/adr/", project),
             DocumentType::OpenApiSpec(project) => format!("docs://openapi/{}/", project),
+            DocumentType::GuideDoc(product) => format!("docs://guides/{}/", product),
         }
     }
 
@@ -104,6 +106,14 @@ impl DocumentType {
                     "OpenAPI specification for {} endpoint in {} project",
                     endpoint_name, project
                 )
+            }
+            DocumentType::GuideDoc(product) => {
+                let stem = _filename
+                    .rsplit('.')
+                    .nth(1)
+                    .unwrap_or(_filename)
+                    .replace('_', " ");
+                format!("Guide: {} - {}", product, stem)
             }
         }
     }
@@ -836,6 +846,12 @@ impl DocumentScanner {
                 vec!["openapi".to_string()],
                 project.clone(),
             ),
+            DocumentType::GuideDoc(product) => (
+                "guides".to_string(),
+                "".to_string(),
+                vec!["guides".to_string()],
+                product.clone(),
+            ),
             DocumentType::Agreements => {
                 let area = guess_agreements_area(scan_root);
                 let mut categories: Vec<String> = vec!["agreements".to_string()];
@@ -907,7 +923,8 @@ impl DocumentScanner {
             DocumentType::C4Diagram(_)
             | DocumentType::ErdDiagram(_)
             | DocumentType::AdrDocument(_)
-            | DocumentType::OpenApiSpec(_) => is_allowed_ext,
+            | DocumentType::OpenApiSpec(_)
+            | DocumentType::GuideDoc(_) => is_allowed_ext,
             DocumentType::Agreements => Self::should_process_file(document_type, filename),
         }
     }
@@ -934,6 +951,8 @@ impl DocumentScanner {
                     || filename.ends_with(".mdx")
                     || filename.ends_with(".txt")
             }
+            // GuideDoc uses extension-based scanning only (process_file_universal)
+            DocumentType::GuideDoc(_) => false,
         }
     }
 
@@ -949,6 +968,7 @@ impl DocumentScanner {
             "md" | "mdx" => "text/markdown".to_string(),
             "txt" => "text/plain".to_string(),
             "yaml" | "yml" => "application/x-yaml".to_string(),
+            "rst" => "text/x-rst".to_string(),
             _ => "text/plain".to_string(),
         }
     }
@@ -965,7 +985,9 @@ fn relative_under_target(relative_path_from_docs_root: &str, scan_root: &str) ->
 
 fn guess_agreements_area(scan_root: &str) -> String {
     let normalized = scan_root.trim_matches('/').to_ascii_lowercase();
-    if normalized == "backend" || normalized.ends_with("/backend") || normalized.contains("/backend/")
+    if normalized == "backend"
+        || normalized.ends_with("/backend")
+        || normalized.contains("/backend/")
     {
         return "backend".to_string();
     }
@@ -1040,6 +1062,10 @@ mod tests {
             DocumentType::C3Diagram("proj-a".to_string()).get_uri_prefix(),
             "docs://architecture/proj-a/"
         );
+        assert_eq!(
+            DocumentType::GuideDoc("eva4".to_string()).get_uri_prefix(),
+            "docs://guides/eva4/"
+        );
     }
 
     #[test]
@@ -1086,6 +1112,22 @@ mod tests {
             "c3.mdx",
         );
         assert_eq!(c3_desc, "C3 diagram for proj-a project");
+
+        let guide_desc = DocumentType::GuideDoc("eva4".to_string()).generate_description(
+            "guides",
+            "",
+            &["guides".to_string()],
+            "eva-repl.rst",
+        );
+        assert_eq!(guide_desc, "Guide: eva4 - eva-repl");
+
+        let guide_desc_install = DocumentType::GuideDoc("psrt".to_string()).generate_description(
+            "guides",
+            "",
+            &["guides".to_string()],
+            "install_guide.rst",
+        );
+        assert_eq!(guide_desc_install, "Guide: psrt - install guide");
     }
 
     #[test]
@@ -1130,6 +1172,7 @@ mod tests {
             DocumentScanner::get_mime_type("test.yml"),
             "application/x-yaml"
         );
+        assert_eq!(DocumentScanner::get_mime_type("install.rst"), "text/x-rst");
         assert_eq!(DocumentScanner::get_mime_type("test.unknown"), "text/plain");
     }
 
@@ -1206,16 +1249,19 @@ mod tests {
             &DocumentType::Agreements,
             "api.yaml"
         ));
+
+        // GuideDoc uses extension-based path only, not should_process_file
+        assert!(!DocumentScanner::should_process_file(
+            &DocumentType::GuideDoc("eva4".to_string()),
+            "install.rst"
+        ));
     }
 
     #[test]
     fn test_c4_diagram_uri_generation() {
         // Test C1 diagram URI generation
         let c1_proj_a = DocumentType::C1Diagram("proj-a".to_string());
-        assert_eq!(
-            c1_proj_a.get_uri_prefix(),
-            "docs://architecture/proj-a/"
-        );
+        assert_eq!(c1_proj_a.get_uri_prefix(), "docs://architecture/proj-a/");
 
         // Test C2 diagram URI generation
         let c2_proj_b = DocumentType::C2Diagram("proj-b".to_string());
@@ -1223,10 +1269,7 @@ mod tests {
 
         // Test C3 diagram URI generation
         let c3_proj_a = DocumentType::C3Diagram("proj-a".to_string());
-        assert_eq!(
-            c3_proj_a.get_uri_prefix(),
-            "docs://architecture/proj-a/"
-        );
+        assert_eq!(c3_proj_a.get_uri_prefix(), "docs://architecture/proj-a/");
     }
 
     #[test]
@@ -1369,14 +1412,21 @@ mod tests {
 
         // Test ERD diagram URI generation for proj-b project
         let erd_proj_b = DocumentType::ErdDiagram("proj-b".to_string());
-        assert_eq!(erd_proj_b.get_uri_prefix(), "docs://architecture/erd/proj-b/");
+        assert_eq!(
+            erd_proj_b.get_uri_prefix(),
+            "docs://architecture/erd/proj-b/"
+        );
     }
 
     #[test]
     fn test_erd_diagram_description_generation() {
         // Test ERD diagram description for proj-a project
-        let erd_proj_a_desc = DocumentType::ErdDiagram("proj-a".to_string())
-            .generate_description("backend", "php", &["erd".to_string()], "user_entities.mdx");
+        let erd_proj_a_desc = DocumentType::ErdDiagram("proj-a".to_string()).generate_description(
+            "backend",
+            "php",
+            &["erd".to_string()],
+            "user_entities.mdx",
+        );
         assert_eq!(
             erd_proj_a_desc,
             "ERD diagram for proj-a project: user_entities"
@@ -1389,7 +1439,10 @@ mod tests {
             &["erd".to_string()],
             "data_schema.mdx",
         );
-        assert_eq!(erd_proj_b_desc, "ERD diagram for proj-b project: data_schema");
+        assert_eq!(
+            erd_proj_b_desc,
+            "ERD diagram for proj-b project: data_schema"
+        );
     }
 
     #[test]
@@ -1403,16 +1456,14 @@ mod tests {
             erd_proj_a.get_uri_prefix(),
             "docs://architecture/erd/proj-a/"
         );
-        assert_eq!(erd_proj_b.get_uri_prefix(), "docs://architecture/erd/proj-b/");
+        assert_eq!(
+            erd_proj_b.get_uri_prefix(),
+            "docs://architecture/erd/proj-b/"
+        );
 
         // Test descriptions
         assert_eq!(
-            erd_proj_a.generate_description(
-                "backend",
-                "php",
-                &["erd".to_string()],
-                "entities.mdx"
-            ),
+            erd_proj_a.generate_description("backend", "php", &["erd".to_string()], "entities.mdx"),
             "ERD diagram for proj-a project: entities"
         );
         assert_eq!(
@@ -1436,7 +1487,10 @@ mod tests {
             erd_proj_a.get_uri_prefix(),
             "docs://architecture/erd/proj-a/"
         );
-        assert_eq!(erd_proj_b.get_uri_prefix(), "docs://architecture/erd/proj-b/");
+        assert_eq!(
+            erd_proj_b.get_uri_prefix(),
+            "docs://architecture/erd/proj-b/"
+        );
     }
 
     #[test]
@@ -1515,19 +1569,21 @@ mod tests {
 
         // Test ADR document URI generation for proj-b project
         let adr_proj_b = DocumentType::AdrDocument("proj-b".to_string());
-        assert_eq!(adr_proj_b.get_uri_prefix(), "docs://architecture/proj-b/adr/");
+        assert_eq!(
+            adr_proj_b.get_uri_prefix(),
+            "docs://architecture/proj-b/adr/"
+        );
     }
 
     #[test]
     fn test_adr_document_description_generation() {
         // Test ADR document description for proj-a project
-        let adr_proj_a_desc = DocumentType::AdrDocument("proj-a".to_string())
-            .generate_description(
-                "architecture",
-                "",
-                &["ADR-001".to_string()],
-                "001-temporal-transactionality.mdx",
-            );
+        let adr_proj_a_desc = DocumentType::AdrDocument("proj-a".to_string()).generate_description(
+            "architecture",
+            "",
+            &["ADR-001".to_string()],
+            "001-temporal-transactionality.mdx",
+        );
         assert_eq!(adr_proj_a_desc, "ADR-001 for proj-a project");
 
         // Test ADR document description for proj-b project
@@ -1620,10 +1676,7 @@ mod tests {
     #[test]
     fn test_openapi_spec_uri_prefix() {
         let openapi_proj_a = DocumentType::OpenApiSpec("proj-a".to_string());
-        assert_eq!(
-            openapi_proj_a.get_uri_prefix(),
-            "docs://openapi/proj-a/"
-        );
+        assert_eq!(openapi_proj_a.get_uri_prefix(), "docs://openapi/proj-a/");
 
         let openapi_mpa = DocumentType::OpenApiSpec("mpa".to_string());
         assert_eq!(openapi_mpa.get_uri_prefix(), "docs://openapi/mpa/");
@@ -1673,9 +1726,12 @@ mod tests {
 
                 let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
                 let uri = format!(
-                    "{}{}",
+                    "{}{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
-                    format!("{}/{}/{}/{}", service, version, access_level, filename)
+                    service,
+                    version,
+                    access_level,
+                    filename
                 );
                 assert_eq!(
                     uri,
@@ -1716,10 +1772,7 @@ mod tests {
         assert!(matches!(openapi_proj_a, DocumentType::OpenApiSpec(_)));
 
         assert_eq!(openapi_mpa.get_uri_prefix(), "docs://openapi/mpa/");
-        assert_eq!(
-            openapi_proj_a.get_uri_prefix(),
-            "docs://openapi/proj-a/"
-        );
+        assert_eq!(openapi_proj_a.get_uri_prefix(), "docs://openapi/proj-a/");
     }
 
     #[test]
@@ -1746,9 +1799,12 @@ mod tests {
 
                 let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
                 let uri = format!(
-                    "{}{}",
+                    "{}{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
-                    format!("{}/{}/{}/{}", service, version, access_level, filename)
+                    service,
+                    version,
+                    access_level,
+                    filename
                 );
                 assert_eq!(
                     uri,
@@ -1786,12 +1842,13 @@ mod tests {
 
                 let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
                 let uri = format!(
-                    "{}{}",
+                    "{}{}/{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
-                    format!(
-                        "{}/{}/{}/{}/{}",
-                        service, version, access_level, sub_category, filename
-                    )
+                    service,
+                    version,
+                    access_level,
+                    sub_category,
+                    filename
                 );
                 assert_eq!(
                     uri,
@@ -1830,12 +1887,13 @@ mod tests {
 
                 let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
                 let uri = format!(
-                    "{}{}",
+                    "{}{}/{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
-                    format!(
-                        "{}/{}/{}/{}/{}",
-                        service, version, access_level, sub_category, filename
-                    )
+                    service,
+                    version,
+                    access_level,
+                    sub_category,
+                    filename
                 );
                 assert_eq!(
                     uri,
@@ -1861,6 +1919,14 @@ mod tests {
         fs::create_dir_all(&openapi_dir).expect("create openapi dir");
         fs::write(openapi_dir.join("service.yml"), "openapi: 3.0.0\n").expect("write service.yml");
 
+        let guide_dir = docs_root.join("eva4");
+        fs::create_dir_all(guide_dir.join("svc")).expect("create guide dir");
+        fs::write(
+            docs_root.join("eva4/svc/eva-repl.rst"),
+            "Replication service\n*******************\n",
+        )
+        .expect("write eva-repl.rst");
+
         let file_reader = FileReader::new(docs_root.to_string_lossy().to_string()).expect("reader");
         let mut resources: BTreeMap<DocumentKey, ResourceInfo> = BTreeMap::new();
 
@@ -1882,11 +1948,23 @@ mod tests {
         )
         .expect("scan openapi");
 
+        DocumentScanner::scan_documents_with_extensions(
+            DocumentType::GuideDoc("eva4".to_string()),
+            vec!["eva4".to_string()],
+            &["rst".to_string()],
+            &file_reader,
+            &mut resources,
+        )
+        .expect("scan guides");
+
         assert!(resources.contains_key(&DocumentKey::new(
             "docs://architecture/proj-a/c1.puml".to_string()
         )));
         assert!(resources.contains_key(&DocumentKey::new(
             "docs://openapi/proj-a/service.yml".to_string()
+        )));
+        assert!(resources.contains_key(&DocumentKey::new(
+            "docs://guides/eva4/svc/eva-repl.rst".to_string()
         )));
     }
 }

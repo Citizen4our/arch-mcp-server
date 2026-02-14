@@ -86,6 +86,22 @@ pub struct AgreementsResponse {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct GetGuidesArgs {
+    /// Optional product name filter (e.g., "eva4", "psrt"). If omitted, returns all guide documents.
+    pub product: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct GuidesResponse {
+    /// Product filter applied (if any)
+    pub product: Option<String>,
+    /// List of guide documents
+    pub guides: Vec<ResourceInfo>,
+    /// Total number of guide documents
+    pub total_guides: u32,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ProjectOverviewResponse {
     /// Project name
     pub project: String,
@@ -269,7 +285,7 @@ impl DocumentServer {
         // Filter documents
         let filtered_docs = self.filter_documents(&args);
         let total_documents = filtered_docs.len() as u32;
-        let total_pages = (total_documents + limit - 1) / limit; // Ceiling division
+        let total_pages = total_documents.div_ceil(limit);
 
         // Calculate pagination
         let start_index = ((page - 1) * limit) as usize;
@@ -412,7 +428,7 @@ impl DocumentServer {
             for category in &doc.category {
                 documents_by_type
                     .entry(category.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push((*doc).clone());
             }
         }
@@ -423,7 +439,7 @@ impl DocumentServer {
         for doc in &project_documents {
             documents_by_area
                 .entry(doc.area.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push((*doc).clone());
         }
 
@@ -438,7 +454,7 @@ impl DocumentServer {
             };
             documents_by_language
                 .entry(lang)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push((*doc).clone());
         }
 
@@ -513,6 +529,50 @@ impl DocumentServer {
             response_json.to_string(),
         )]))
     }
+
+    #[tool(
+        description = "Get guide documents (product documentation). Returns installation, configuration, and how-to docs. Optional product filter (e.g., eva4, psrt). Use get_resource_content with the returned URI to read a guide.",
+        annotations(
+            title = "📚 Get Guides",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn get_guides(
+        &self,
+        Parameters(GetGuidesArgs { product }): Parameters<GetGuidesArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let guide_documents: Vec<ResourceInfo> = self
+            .resources
+            .values()
+            .filter(|info| {
+                info.area == "guides" && product.as_ref().is_none_or(|p| info.project == *p)
+            })
+            .cloned()
+            .collect();
+
+        let total_guides = guide_documents.len() as u32;
+        let response = GuidesResponse {
+            product: product.clone(),
+            guides: guide_documents,
+            total_guides,
+        };
+
+        let response_json = serde_json::to_value(&response).map_err(|e| {
+            McpError::internal_error(
+                "serialization_error",
+                Some(json!({
+                    "error": format!("Failed to serialize guides response: {}", e)
+                })),
+            )
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            response_json.to_string(),
+        )]))
+    }
 }
 
 #[prompt_router]
@@ -530,7 +590,7 @@ impl ServerHandler for DocumentServer {
                 .enable_tools()
                 .build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some("This server provides document access tools. Tools: get_resource_content (reads files by docs:// path), get_docs_list (lists documents with filtering and pagination), get_all_adr_documents (retrieves all ADR documents sorted by number), get_project_overview (comprehensive project overview with statistics and grouped documents), get_agreements (retrieves agreement documents filtered by programming language).".to_string()),
+            instructions: Some("This server provides document access tools. Tools: get_resource_content (reads files by docs:// path), get_docs_list (lists documents with filtering and pagination), get_all_adr_documents (retrieves all ADR documents sorted by number), get_project_overview (comprehensive project overview with statistics and grouped documents), get_agreements (retrieves agreement documents filtered by programming language), get_guides (retrieves guide/product documentation, optional product filter).".to_string()),
         }
     }
 
@@ -541,8 +601,8 @@ impl ServerHandler for DocumentServer {
     ) -> Result<ListResourcesResult, McpError> {
         let resources: Vec<Resource> = self
             .resources
-            .iter()
-            .map(|(_key, info)| {
+            .values()
+            .map(|info| {
                 let mut resource = RawResource::new(info.uri.clone(), info.description.clone());
                 resource.description = Some(info.description.clone());
                 resource.mime_type = Some(info.mime_type.clone());
@@ -608,7 +668,10 @@ impl ServerHandler for DocumentServer {
         _: RequestContext<RoleServer>,
     ) -> Result<(), McpError> {
         // Check if the resource exists
-        if !self.resources.contains_key(&DocumentKey::new(request.uri.clone())) {
+        if !self
+            .resources
+            .contains_key(&DocumentKey::new(request.uri.clone()))
+        {
             return Err(McpError::resource_not_found(
                 "resource_not_found",
                 Some(json!({
@@ -931,6 +994,29 @@ mod tests {
 
         let result = docs.get_agreements(Parameters(args)).await;
         // This will succeed even with empty results since we don't have agreements in test data
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_guides_tool_attributes() {
+        let router = DocumentServer::tool_router();
+        assert!(router.has_route("get_guides"));
+
+        let tools = router.list_all();
+        assert!(tools.iter().any(|t| t.name == "get_guides"));
+    }
+
+    #[tokio::test]
+    async fn test_get_guides_success() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let docs_root = temp_dir.path().to_string_lossy().to_string();
+        let docs = DocumentServer::new_with_resources(
+            FileReader::new(docs_root).expect("file reader"),
+            BTreeMap::new(),
+        );
+        let args = GetGuidesArgs { product: None };
+
+        let result = docs.get_guides(Parameters(args)).await;
         assert!(result.is_ok());
     }
 }

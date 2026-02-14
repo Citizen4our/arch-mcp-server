@@ -15,6 +15,16 @@ openapi_extensions = ["yaml", "yml"]
 # Directories scanned for agreement documents.
 agreements = ["docs/backend", "docs/frontend"]
 
+guide_extensions = ["rst"]
+
+[[guides]]
+name = "eva4"
+paths = ["eva4"]
+
+[[guides]]
+name = "psrt"
+paths = ["psrt"]
+
 [[projects]]
 name = "project-a"
 erd = ["docs/architecture/project-a/erd"]

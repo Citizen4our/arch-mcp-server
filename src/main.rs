@@ -137,6 +137,19 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let guide_exts = cfg.guide_extensions.clone();
+    for guide in &cfg.guides {
+        if let Err(e) = DocumentScanner::scan_documents_with_extensions(
+            DocumentType::GuideDoc(guide.name.clone()),
+            guide.paths.clone(),
+            &guide_exts,
+            &file_reader,
+            &mut resources,
+        ) {
+            warn!("Failed to scan guides for '{}': {}", guide.name, e);
+        }
+    }
+
     let scan_duration = scan_start.elapsed();
     info!(
         "Scanned {} documents in {:?}",

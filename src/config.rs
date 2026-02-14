@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 
 use serde::Deserialize;
 
@@ -17,7 +14,22 @@ pub struct Config {
     #[serde(default = "default_agreements")]
     pub agreements: Vec<String>,
 
+    #[serde(default = "default_guide_extensions")]
+    pub guide_extensions: Vec<String>,
+
+    #[serde(default)]
+    pub guides: Vec<GuideConfig>,
+
     pub projects: Vec<ProjectConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GuideConfig {
+    pub name: String,
+
+    #[serde(default)]
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,8 +69,7 @@ impl Config {
             Some(path) => path.to_path_buf(),
             None => {
                 // Default: look for arch-mcp.toml in current working directory
-                std::env::current_dir()?
-                    .join("arch-mcp.toml")
+                std::env::current_dir()?.join("arch-mcp.toml")
             }
         };
 
@@ -81,6 +92,11 @@ impl Config {
         normalize_extensions(&mut cfg.diagram_extensions);
         normalize_extensions(&mut cfg.openapi_extensions);
         normalize_paths(&mut cfg.agreements);
+        normalize_extensions(&mut cfg.guide_extensions);
+
+        for guide in &mut cfg.guides {
+            normalize_paths(&mut guide.paths);
+        }
 
         for project in &mut cfg.projects {
             normalize_paths(&mut project.c4.c1);
@@ -106,6 +122,10 @@ fn default_openapi_extensions() -> Vec<String> {
 
 fn default_agreements() -> Vec<String> {
     vec!["content/docs/backend".to_string()]
+}
+
+fn default_guide_extensions() -> Vec<String> {
+    vec!["rst".to_string()]
 }
 
 fn normalize_extensions(exts: &mut Vec<String>) {
@@ -142,12 +162,15 @@ projects = [
         normalize_extensions(&mut cfg.diagram_extensions);
         normalize_extensions(&mut cfg.openapi_extensions);
         normalize_paths(&mut cfg.agreements);
+        normalize_extensions(&mut cfg.guide_extensions);
 
         assert_eq!(cfg.projects.len(), 1);
         assert_eq!(cfg.projects[0].name, "example-project");
         assert_eq!(cfg.diagram_extensions, vec!["dot", "mdx", "puml"]);
         assert_eq!(cfg.openapi_extensions, vec!["yaml", "yml"]);
         assert_eq!(cfg.agreements, vec!["content/docs/backend"]);
+        assert_eq!(cfg.guide_extensions, vec!["rst"]);
+        assert!(cfg.guides.is_empty());
     }
 
     #[test]
@@ -174,6 +197,7 @@ services = ["arch/c4/services"]
         normalize_extensions(&mut cfg.diagram_extensions);
         normalize_extensions(&mut cfg.openapi_extensions);
         normalize_paths(&mut cfg.agreements);
+        normalize_extensions(&mut cfg.guide_extensions);
 
         assert_eq!(cfg.diagram_extensions, vec!["dot", "puml"]);
         assert_eq!(cfg.openapi_extensions, vec!["yaml", "yml"]);
@@ -189,5 +213,36 @@ services = ["arch/c4/services"]
         assert_eq!(p.erd, vec!["arch/erd"]);
         assert_eq!(p.adr, vec!["arch/adr"]);
         assert_eq!(p.openapi, vec!["openapi-spec"]);
+    }
+
+    #[test]
+    fn parse_config_with_guides() {
+        let toml_str = r#"
+guide_extensions = ["rst", "md"]
+
+[[guides]]
+name = "eva4"
+paths = ["eva4"]
+
+[[guides]]
+name = "psrt"
+paths = ["psrt", "psrt/extra"]
+
+[[projects]]
+name = "example-project"
+"#;
+
+        let mut cfg: Config = toml::from_str(toml_str).expect("parse config");
+        normalize_extensions(&mut cfg.guide_extensions);
+        for guide in &mut cfg.guides {
+            normalize_paths(&mut guide.paths);
+        }
+
+        assert_eq!(cfg.guide_extensions, vec!["md", "rst"]);
+        assert_eq!(cfg.guides.len(), 2);
+        assert_eq!(cfg.guides[0].name, "eva4");
+        assert_eq!(cfg.guides[0].paths, vec!["eva4"]);
+        assert_eq!(cfg.guides[1].name, "psrt");
+        assert_eq!(cfg.guides[1].paths, vec!["psrt", "psrt/extra"]);
     }
 }
