@@ -46,9 +46,9 @@ impl DocumentType {
         match self {
             DocumentType::Agreements => "docs://agreements/".to_string(),
             DocumentType::ErdDiagram(project) => format!("docs://architecture/erd/{}/", project),
-            DocumentType::C1Diagram(project) => format!("docs://architecture/{}/", project),
-            DocumentType::C2Diagram(project) => format!("docs://architecture/{}/", project),
-            DocumentType::C3Diagram(project) => format!("docs://architecture/{}/", project),
+            DocumentType::C1Diagram(project)
+            | DocumentType::C2Diagram(project)
+            | DocumentType::C3Diagram(project) => format!("docs://architecture/{}/", project),
             DocumentType::C4Diagram(project) => format!("docs://architecture/{}/c4/", project),
             DocumentType::AdrDocument(project) => format!("docs://architecture/{}/adr/", project),
             DocumentType::OpenApiSpec(project) => format!("docs://openapi/{}/", project),
@@ -129,7 +129,7 @@ impl DocumentScanner {
         area_paths: Vec<String>,
         file_reader: &FileReader,
         resources: &mut BTreeMap<DocumentKey, ResourceInfo>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) {
         if matches!(document_type, DocumentType::Agreements) {
             for target in area_paths {
                 if let Err(e) = Self::scan_target_with_extensions(
@@ -142,7 +142,7 @@ impl DocumentScanner {
                     tracing::warn!("Failed to scan target '{}': {}", target, e);
                 }
             }
-            return Ok(());
+            return;
         }
 
         for area_path in area_paths {
@@ -150,7 +150,6 @@ impl DocumentScanner {
                 tracing::warn!("Failed to scan area '{}': {}", area_path, e);
             }
         }
-        Ok(())
     }
 
     pub fn scan_documents_with_extensions(
@@ -159,7 +158,7 @@ impl DocumentScanner {
         allowed_extensions: &[String],
         file_reader: &FileReader,
         resources: &mut BTreeMap<DocumentKey, ResourceInfo>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) {
         for target in scan_targets {
             if let Err(e) = Self::scan_target_with_extensions(
                 &document_type,
@@ -171,7 +170,6 @@ impl DocumentScanner {
                 tracing::warn!("Failed to scan target '{}': {}", target, e);
             }
         }
-        Ok(())
     }
 
     /// Scans one area folder recursively
@@ -359,6 +357,7 @@ impl DocumentScanner {
     }
 
     /// Processes a single file and adds to resources
+    #[allow(clippy::too_many_lines)]
     fn process_file(
         document_type: &DocumentType,
         file_path: &Path,
@@ -397,15 +396,14 @@ impl DocumentScanner {
                     DocumentType::C1Diagram(_) => "c1".to_string(),
                     DocumentType::C2Diagram(_) => "c2".to_string(),
                     DocumentType::C3Diagram(_) => "c3".to_string(),
-                    DocumentType::C4Diagram(_) => "c4".to_string(),
                     _ => "c4".to_string(),
                 };
                 (
                     uri,
                     "architecture".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![category],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -422,9 +420,9 @@ impl DocumentScanner {
                 (
                     uri,
                     "architecture".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec!["c4".to_string()],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -441,9 +439,9 @@ impl DocumentScanner {
                 (
                     uri,
                     "architecture".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec!["erd".to_string()],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             ["content", "docs", "architecture", project, "erd", filename] => {
@@ -452,9 +450,9 @@ impl DocumentScanner {
                 (
                     uri,
                     "architecture".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec!["erd".to_string()],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             ["content", "docs", "architecture", project, "adr", filename] => {
@@ -470,9 +468,9 @@ impl DocumentScanner {
                 (
                     uri,
                     "architecture".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec!["adr".to_string(), category],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -494,14 +492,14 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -522,14 +520,14 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -552,15 +550,15 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
-                        sub_category.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
+                        (*sub_category).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -582,15 +580,15 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
-                        sub_category.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
+                        (*sub_category).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -610,14 +608,14 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -636,14 +634,14 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -664,15 +662,15 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
-                        sub_category.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
+                        (*sub_category).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             [
@@ -692,15 +690,15 @@ impl DocumentScanner {
                 (
                     uri,
                     "openapi".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec![
                         "openapi".to_string(),
-                        service.to_string(),
-                        version.to_string(),
-                        access_level.to_string(),
-                        sub_category.to_string(),
+                        (*service).to_string(),
+                        (*version).to_string(),
+                        (*access_level).to_string(),
+                        (*sub_category).to_string(),
                     ],
-                    project.to_string(),
+                    (*project).to_string(),
                 )
             }
             ["content", "docs", area, lang, category, ..] => {
@@ -714,16 +712,16 @@ impl DocumentScanner {
                     filename
                 );
                 let categories = if matches!(document_type, DocumentType::Agreements) {
-                    vec!["agreements".to_string(), category.to_string()]
+                    vec!["agreements".to_string(), (*category).to_string()]
                 } else {
-                    vec![category.to_string()]
+                    vec![(*category).to_string()]
                 };
                 (
                     uri,
-                    area.to_string(),
-                    lang.to_string(),
+                    (*area).to_string(),
+                    (*lang).to_string(),
                     categories,
-                    "".to_string(),
+                    String::new(),
                 )
             }
             ["content", "docs", _area, ..] => {
@@ -736,7 +734,7 @@ impl DocumentScanner {
         let mime_type = Self::get_mime_type(&filename);
 
         let metadata = std::fs::metadata(file_path)?;
-        let size = metadata.len() as u32;
+        let size = metadata.len().try_into().unwrap_or(u32::MAX);
 
         let key = DocumentKey::new(uri.clone());
         let description = document_type.generate_description(&area, &lang, &categories, &filename);
@@ -757,6 +755,7 @@ impl DocumentScanner {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn process_file_universal(
         document_type: &DocumentType,
         file_path: &Path,
@@ -799,31 +798,31 @@ impl DocumentScanner {
         let (area, lang, categories, project) = match document_type {
             DocumentType::C1Diagram(project) => (
                 "architecture".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["c1".to_string()],
                 project.clone(),
             ),
             DocumentType::C2Diagram(project) => (
                 "architecture".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["c2".to_string()],
                 project.clone(),
             ),
             DocumentType::C3Diagram(project) => (
                 "architecture".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["c3".to_string()],
                 project.clone(),
             ),
             DocumentType::C4Diagram(project) => (
                 "architecture".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["c4".to_string()],
                 project.clone(),
             ),
             DocumentType::ErdDiagram(project) => (
                 "architecture".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["erd".to_string()],
                 project.clone(),
             ),
@@ -835,20 +834,20 @@ impl DocumentScanner {
                     .trim_end_matches(".mdx");
                 (
                     "architecture".to_string(),
-                    "".to_string(),
+                    String::new(),
                     vec!["adr".to_string(), format!("ADR-{}", adr_number)],
                     project.clone(),
                 )
             }
             DocumentType::OpenApiSpec(project) => (
                 "openapi".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["openapi".to_string()],
                 project.clone(),
             ),
             DocumentType::GuideDoc(product) => (
                 "guides".to_string(),
-                "".to_string(),
+                String::new(),
                 vec!["guides".to_string()],
                 product.clone(),
             ),
@@ -867,14 +866,14 @@ impl DocumentScanner {
                     },
                     lang,
                     categories,
-                    "".to_string(),
+                    String::new(),
                 )
             }
         };
 
         let mime_type = Self::get_mime_type(&filename);
         let metadata = std::fs::metadata(file_path)?;
-        let size = metadata.len() as u32;
+        let size = metadata.len().try_into().unwrap_or(u32::MAX);
         let key = DocumentKey::new(uri.clone());
         let description = document_type.generate_description(&area, &lang, &categories, &filename);
 
@@ -940,17 +939,21 @@ impl DocumentScanner {
             // C4 service diagrams, ERD diagrams, ADR documents: process all .mdx files
             DocumentType::C4Diagram(_)
             | DocumentType::ErdDiagram(_)
-            | DocumentType::AdrDocument(_) => filename.ends_with(".mdx"),
+            | DocumentType::AdrDocument(_) => Path::new(filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("mdx")),
 
             // OpenAPI specs: process all .yaml files
-            DocumentType::OpenApiSpec(_) => filename.ends_with(".yaml"),
+            DocumentType::OpenApiSpec(_) => Path::new(filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml")),
 
             // Agreements: process all supported files
-            DocumentType::Agreements => {
-                filename.ends_with(".md")
-                    || filename.ends_with(".mdx")
-                    || filename.ends_with(".txt")
-            }
+            DocumentType::Agreements => Path::new(filename).extension().is_some_and(|ext| {
+                ext.eq_ignore_ascii_case("md")
+                    || ext.eq_ignore_ascii_case("mdx")
+                    || ext.eq_ignore_ascii_case("txt")
+            }),
             // GuideDoc uses extension-based scanning only (process_file_universal)
             DocumentType::GuideDoc(_) => false,
         }
@@ -966,7 +969,6 @@ impl DocumentScanner {
 
         match extension.as_str() {
             "md" | "mdx" => "text/markdown".to_string(),
-            "txt" => "text/plain".to_string(),
             "yaml" | "yml" => "application/x-yaml".to_string(),
             "rst" => "text/x-rst".to_string(),
             _ => "text/plain".to_string(),
@@ -1007,7 +1009,7 @@ fn guess_agreements_area(scan_root: &str) -> String {
     // Best-effort fallback: use the last path component, unless it is a generic container like "docs".
     let last = normalized.rsplit('/').next().unwrap_or("").trim();
     if last == "docs" || last.is_empty() {
-        "".to_string()
+        String::new()
     } else {
         last.to_string()
     }
@@ -1019,7 +1021,7 @@ fn parse_agreements_subpath(subpath: &str, area: &str) -> (String, Vec<String>) 
         let lang = parts[0].to_string();
         let categories = parts[1..parts.len() - 1]
             .iter()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>();
         return (lang, categories);
     }
@@ -1027,9 +1029,9 @@ fn parse_agreements_subpath(subpath: &str, area: &str) -> (String, Vec<String>) 
     // If we cannot infer language, keep it empty and map the directory tree (excluding filename) as categories.
     let categories = parts[..parts.len().saturating_sub(1)]
         .iter()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect::<Vec<_>>();
-    ("".to_string(), categories)
+    (String::new(), categories)
 }
 
 #[cfg(test)]
@@ -1433,14 +1435,10 @@ mod tests {
         );
 
         // Test ERD diagram description for proj-b project
-        let erd_proj_b_desc = DocumentType::ErdDiagram("proj-b".to_string()).generate_description(
-            "frontend",
-            "js",
-            &["erd".to_string()],
-            "data_schema.mdx",
-        );
+        let erd_proj_b_description = DocumentType::ErdDiagram("proj-b".to_string())
+            .generate_description("frontend", "js", &["erd".to_string()], "data_schema.mdx");
         assert_eq!(
-            erd_proj_b_desc,
+            erd_proj_b_description,
             "ERD diagram for proj-b project: data_schema"
         );
     }
@@ -1527,7 +1525,11 @@ mod tests {
         let is_erd_diagram = matches!(erd_proj_a, DocumentType::ErdDiagram(_));
 
         assert!(is_erd_diagram);
-        assert!(test_filename.ends_with(".mdx"));
+        assert!(
+            Path::new(test_filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("mdx"))
+        );
 
         // Test URI generation for ERD diagrams
         let expected_uri = format!("{}{}", erd_proj_a.get_uri_prefix(), test_filename);
@@ -1550,7 +1552,7 @@ mod tests {
                 assert_eq!(*filename, "mail-transport.mdx");
 
                 // Test URI generation
-                let erd_diagram = DocumentType::ErdDiagram(project.to_string());
+                let erd_diagram = DocumentType::ErdDiagram((*project).to_string());
                 let uri = format!("{}{}", erd_diagram.get_uri_prefix(), filename);
                 assert_eq!(uri, "docs://architecture/erd/proj-b/mail-transport.mdx");
             }
@@ -1587,13 +1589,14 @@ mod tests {
         assert_eq!(adr_proj_a_desc, "ADR-001 for proj-a project");
 
         // Test ADR document description for proj-b project
-        let adr_proj_b_desc = DocumentType::AdrDocument("proj-b".to_string()).generate_description(
-            "architecture",
-            "",
-            &["ADR-002".to_string()],
-            "002-microservices-communication.mdx",
-        );
-        assert_eq!(adr_proj_b_desc, "ADR-002 for proj-b project");
+        let adr_proj_b_description = DocumentType::AdrDocument("proj-b".to_string())
+            .generate_description(
+                "architecture",
+                "",
+                &["ADR-002".to_string()],
+                "002-microservices-communication.mdx",
+            );
+        assert_eq!(adr_proj_b_description, "ADR-002 for proj-b project");
     }
 
     #[test]
@@ -1609,7 +1612,7 @@ mod tests {
                 assert_eq!(*filename, "001-temporal-transactionality.mdx");
 
                 // Test URI generation
-                let adr_document = DocumentType::AdrDocument(project.to_string());
+                let adr_document = DocumentType::AdrDocument((*project).to_string());
                 let uri = format!("{}{}", adr_document.get_uri_prefix(), filename);
                 assert_eq!(
                     uri,
@@ -1658,7 +1661,7 @@ mod tests {
         // Test that ERD path matches ERD pattern
         match erd_parts.as_slice() {
             ["content", "docs", "architecture", project, "erd", filename] => {
-                let erd_diagram = DocumentType::ErdDiagram(project.to_string());
+                let erd_diagram = DocumentType::ErdDiagram((*project).to_string());
                 let uri = format!("{}{}", erd_diagram.get_uri_prefix(), filename);
                 assert_eq!(uri, "docs://architecture/erd/proj-b/mail-transport.mdx");
                 println!("ERD URI: {}", uri);
@@ -1724,7 +1727,7 @@ mod tests {
                 assert_eq!(*access_level, "public");
                 assert_eq!(*filename, "get-customer-activation-info.yaml");
 
-                let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
+                let openapi_spec = DocumentType::OpenApiSpec((*project).to_string());
                 let uri = format!(
                     "{}{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
@@ -1797,7 +1800,7 @@ mod tests {
                 assert_eq!(*access_level, "public");
                 assert_eq!(*filename, "seat-activation.yaml");
 
-                let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
+                let openapi_spec = DocumentType::OpenApiSpec((*project).to_string());
                 let uri = format!(
                     "{}{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
@@ -1840,7 +1843,7 @@ mod tests {
                 assert_eq!(*sub_category, "activation");
                 assert_eq!(*filename, "get-customer-by-activation-id.yaml");
 
-                let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
+                let openapi_spec = DocumentType::OpenApiSpec((*project).to_string());
                 let uri = format!(
                     "{}{}/{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
@@ -1885,7 +1888,7 @@ mod tests {
                 assert_eq!(*sub_category, "gateway");
                 assert_eq!(*filename, "file.yaml");
 
-                let openapi_spec = DocumentType::OpenApiSpec(project.to_string());
+                let openapi_spec = DocumentType::OpenApiSpec((*project).to_string());
                 let uri = format!(
                     "{}{}/{}/{}/{}/{}",
                     openapi_spec.get_uri_prefix(),
@@ -1936,8 +1939,7 @@ mod tests {
             &["puml".to_string(), "dot".to_string(), "mdx".to_string()],
             &file_reader,
             &mut resources,
-        )
-        .expect("scan c1");
+        );
 
         DocumentScanner::scan_documents_with_extensions(
             DocumentType::OpenApiSpec("proj-a".to_string()),
@@ -1945,8 +1947,7 @@ mod tests {
             &["yaml".to_string(), "yml".to_string()],
             &file_reader,
             &mut resources,
-        )
-        .expect("scan openapi");
+        );
 
         DocumentScanner::scan_documents_with_extensions(
             DocumentType::GuideDoc("eva4".to_string()),
@@ -1954,8 +1955,7 @@ mod tests {
             &["rst".to_string()],
             &file_reader,
             &mut resources,
-        )
-        .expect("scan guides");
+        );
 
         assert!(resources.contains_key(&DocumentKey::new(
             "docs://architecture/proj-a/c1.puml".to_string()
