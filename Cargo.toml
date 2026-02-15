@@ -45,6 +45,7 @@ hyper = { version = "1" }
 hyper-util = { version = "0", features = ["server"] }
 tokio-util = { version = "0.7" }
 dotenvy = "0.15"
+clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 tokio-stream = { version = "0.1" }
