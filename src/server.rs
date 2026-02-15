@@ -6,7 +6,13 @@ use rmcp::{
         router::{prompt::PromptRouter, tool::ToolRouter},
         wrapper::Parameters,
     },
-    model::*,
+    model::{
+        AnnotateAble, CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
+        Implementation, InitializeRequestParams, InitializeResult, ListPromptsResult,
+        ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams, ProtocolVersion,
+        RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
+        ServerCapabilities, ServerInfo, SubscribeRequestParams, UnsubscribeRequestParams,
+    },
     prompt_handler, prompt_router, schemars,
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -155,7 +161,7 @@ impl DocumentServer {
     }
 
     /// Checks if a value matches any of the filter values (supports OR with | separator)
-    pub fn matches_filter(value: &str, filter: &Option<String>) -> bool {
+    pub fn matches_filter(value: &str, filter: Option<&String>) -> bool {
         match filter {
             None => true,
             Some(filter_str) => filter_str
@@ -165,11 +171,11 @@ impl DocumentServer {
     }
 
     /// Checks if any category in the categories array matches any of the filter values
-    pub fn matches_category_filter(categories: &[String], filter: &Option<String>) -> bool {
+    pub fn matches_category_filter(categories: &[String], filter: Option<&String>) -> bool {
         match filter {
             None => true,
             Some(filter_str) => {
-                let filter_values: Vec<&str> = filter_str.split('|').map(|v| v.trim()).collect();
+                let filter_values: Vec<&str> = filter_str.split('|').map(str::trim).collect();
                 categories.iter().any(|category| {
                     filter_values
                         .iter()
@@ -185,14 +191,14 @@ impl DocumentServer {
             .values()
             .filter(|info| {
                 // Check area filter
-                let area_matches = Self::matches_filter(&info.area, &args.area);
+                let area_matches = Self::matches_filter(&info.area, args.area.as_ref());
 
                 // Check lang filter
-                let lang_matches = Self::matches_filter(&info.lang, &args.lang);
+                let lang_matches = Self::matches_filter(&info.lang, args.lang.as_ref());
 
                 // Check category filter - now works with array of categories
                 let category_matches =
-                    Self::matches_category_filter(&info.category, &args.category);
+                    Self::matches_category_filter(&info.category, args.category.as_ref());
 
                 area_matches && lang_matches && category_matches
             })
@@ -284,7 +290,7 @@ impl DocumentServer {
 
         // Filter documents
         let filtered_docs = self.filter_documents(&args);
-        let total_documents = filtered_docs.len() as u32;
+        let total_documents = filtered_docs.len().try_into().unwrap_or(u32::MAX);
         let total_pages = total_documents.div_ceil(limit);
 
         // Calculate pagination
@@ -368,7 +374,7 @@ impl DocumentServer {
         // Create response
         let response = AdrListResponse {
             adr_documents: sorted_adr_documents.clone(),
-            total_adr_documents: sorted_adr_documents.len() as u32,
+            total_adr_documents: sorted_adr_documents.len().try_into().unwrap_or(u32::MAX),
         };
 
         // Serialize response to JSON
@@ -418,8 +424,11 @@ impl DocumentServer {
         }
 
         // Calculate statistics
-        let total_documents = project_documents.len() as u32;
-        let total_size: u64 = project_documents.iter().map(|doc| doc.size as u64).sum();
+        let total_documents = project_documents.len().try_into().unwrap_or(u32::MAX);
+        let total_size: u64 = project_documents
+            .iter()
+            .map(|doc| u64::from(doc.size))
+            .sum();
 
         // Group documents by type (category)
         let mut documents_by_type: std::collections::BTreeMap<String, Vec<ResourceInfo>> =
@@ -512,7 +521,7 @@ impl DocumentServer {
                 .iter()
                 .map(|doc| (*doc).clone())
                 .collect(),
-            total_agreements: agreement_documents.len() as u32,
+            total_agreements: agreement_documents.len().try_into().unwrap_or(u32::MAX),
         };
 
         // Serialize response to JSON
@@ -553,7 +562,7 @@ impl DocumentServer {
             .cloned()
             .collect();
 
-        let total_guides = guide_documents.len() as u32;
+        let total_guides = guide_documents.len().try_into().unwrap_or(u32::MAX);
         let response = GuidesResponse {
             product: product.clone(),
             guides: guide_documents,
@@ -845,35 +854,26 @@ mod tests {
     #[test]
     fn test_matches_filter_function() {
         // Test with no filter (should match everything)
-        assert!(DocumentServer::matches_filter("any_value", &None));
+        assert!(DocumentServer::matches_filter("any_value", None));
 
         // Test with exact match
-        assert!(DocumentServer::matches_filter(
-            "exact",
-            &Some("exact".to_string())
-        ));
+        let exact = Some("exact".to_string());
+        assert!(DocumentServer::matches_filter("exact", exact.as_ref()));
 
         // Test with OR logic
-        assert!(DocumentServer::matches_filter(
-            "value1",
-            &Some("value1|value2".to_string())
-        ));
-        assert!(DocumentServer::matches_filter(
-            "value2",
-            &Some("value1|value2".to_string())
-        ));
+        let or_filter = Some("value1|value2".to_string());
+        assert!(DocumentServer::matches_filter("value1", or_filter.as_ref()));
+        assert!(DocumentServer::matches_filter("value2", or_filter.as_ref()));
 
         // Test with no match
         assert!(!DocumentServer::matches_filter(
             "nomatch",
-            &Some("value1|value2".to_string())
+            or_filter.as_ref()
         ));
 
         // Test with whitespace
-        assert!(DocumentServer::matches_filter(
-            "value1",
-            &Some(" value1 | value2 ".to_string())
-        ));
+        let ws_filter = Some(" value1 | value2 ".to_string());
+        assert!(DocumentServer::matches_filter("value1", ws_filter.as_ref()));
     }
 
     #[test]
@@ -881,55 +881,60 @@ mod tests {
         // Test with no filter (should match everything)
         assert!(DocumentServer::matches_category_filter(
             &["any_value".to_string()],
-            &None
+            None
         ));
 
         // Test with exact match
+        let exact_cat = Some("exact".to_string());
         assert!(DocumentServer::matches_category_filter(
             &["exact".to_string()],
-            &Some("exact".to_string())
+            exact_cat.as_ref()
         ));
 
         // Test with OR logic
+        let or_filter = Some("value1|value2".to_string());
         assert!(DocumentServer::matches_category_filter(
             &["value1".to_string()],
-            &Some("value1|value2".to_string())
+            or_filter.as_ref()
         ));
         assert!(DocumentServer::matches_category_filter(
             &["value2".to_string()],
-            &Some("value1|value2".to_string())
+            or_filter.as_ref()
         ));
 
         // Test with multiple categories - should match if any category matches
         assert!(DocumentServer::matches_category_filter(
             &["value1".to_string(), "other".to_string()],
-            &Some("value1|value2".to_string())
+            or_filter.as_ref()
         ));
         assert!(DocumentServer::matches_category_filter(
             &["other".to_string(), "value2".to_string()],
-            &Some("value1|value2".to_string())
+            or_filter.as_ref()
         ));
 
         // Test with no match
         assert!(!DocumentServer::matches_category_filter(
             &["nomatch".to_string()],
-            &Some("value1|value2".to_string())
+            or_filter.as_ref()
         ));
 
         // Test with whitespace
+        let ws_filter = Some(" value1 | value2 ".to_string());
         assert!(DocumentServer::matches_category_filter(
             &["value1".to_string()],
-            &Some(" value1 | value2 ".to_string())
+            ws_filter.as_ref()
         ));
 
         // Test agreements category
+        let agreements = Some("agreements".to_string());
+        let api = Some("api".to_string());
         assert!(DocumentServer::matches_category_filter(
             &["agreements".to_string(), "api".to_string()],
-            &Some("agreements".to_string())
+            agreements.as_ref()
         ));
         assert!(DocumentServer::matches_category_filter(
             &["agreements".to_string(), "api".to_string()],
-            &Some("api".to_string())
+            api.as_ref()
         ));
     }
 

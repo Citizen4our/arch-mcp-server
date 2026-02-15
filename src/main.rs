@@ -19,6 +19,7 @@ use server::DocumentServer;
 
 use crate::utils::file_reader::FileReader;
 
+#[allow(clippy::ignored_unit_patterns)]
 async fn setup_graceful_shutdown() {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
@@ -56,6 +57,7 @@ async fn setup_graceful_shutdown() {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
     let (docs_root, explicit_config, bind_address, rust_log) = parse_args(std::env::args())?;
 
@@ -74,14 +76,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Scan agreements
     let area_paths = cfg.agreements.clone();
-    if let Err(e) = DocumentScanner::scan_documents(
+    DocumentScanner::scan_documents(
         DocumentType::Agreements,
         area_paths,
         &file_reader,
         &mut resources,
-    ) {
-        warn!("Failed to scan agreements: {}", e);
-    }
+    );
 
     for project in &cfg.projects {
         let diagram_exts = cfg.diagram_extensions.clone();
@@ -89,15 +89,13 @@ async fn main() -> anyhow::Result<()> {
 
         let mut scan_type =
             |document_type: DocumentType, targets: Vec<String>, exts: Vec<String>| {
-                if let Err(e) = DocumentScanner::scan_documents_with_extensions(
+                DocumentScanner::scan_documents_with_extensions(
                     document_type,
                     targets,
                     &exts,
                     &file_reader,
                     &mut resources,
-                ) {
-                    warn!("Failed to scan documents: {}", e);
-                }
+                );
             };
 
         scan_type(
@@ -139,15 +137,13 @@ async fn main() -> anyhow::Result<()> {
 
     let guide_exts = cfg.guide_extensions.clone();
     for guide in &cfg.guides {
-        if let Err(e) = DocumentScanner::scan_documents_with_extensions(
+        DocumentScanner::scan_documents_with_extensions(
             DocumentType::GuideDoc(guide.name.clone()),
             guide.paths.clone(),
             &guide_exts,
             &file_reader,
             &mut resources,
-        ) {
-            warn!("Failed to scan guides for '{}': {}", guide.name, e);
-        }
+        );
     }
 
     let scan_duration = scan_start.elapsed();
@@ -166,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
             ))
         },
         LocalSessionManager::default().into(),
-        Default::default(),
+        rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default(),
     );
 
     let router = axum::Router::new().nest_service("/mcp", service);
