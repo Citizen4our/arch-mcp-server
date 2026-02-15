@@ -1,5 +1,6 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
+use clap::Parser;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -18,6 +19,42 @@ use models::{DocumentKey, DocumentScanner, DocumentType, ResourceInfo};
 use server::DocumentServer;
 
 use crate::utils::file_reader::FileReader;
+
+/// MCP server for architecture docs — in the Emperor's name, serve the docs.
+#[derive(Parser, Debug)]
+#[command(name = "arch-mcp-server")]
+struct Cli {
+    /// Root directory for documentation (required).
+    #[arg(long, value_name = "PATH")]
+    docs_root: PathBuf,
+
+    /// Path to config file (arch-mcp.toml). Default: current dir.
+    #[arg(long, value_name = "PATH")]
+    config: Option<PathBuf>,
+
+    /// Address to bind (host:port).
+    #[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8010")]
+    bind_address: String,
+
+    /// RUST_LOG-style level when RUST_LOG env is unset.
+    #[arg(long, value_name = "LEVEL", default_value = "info")]
+    rust_log: String,
+}
+
+impl Cli {
+    fn docs_root(&self) -> &PathBuf {
+        &self.docs_root
+    }
+    fn config(&self) -> Option<&PathBuf> {
+        self.config.as_ref()
+    }
+    fn bind_address(&self) -> &str {
+        &self.bind_address
+    }
+    fn rust_log(&self) -> &str {
+        &self.rust_log
+    }
+}
 
 #[allow(clippy::ignored_unit_patterns)]
 async fn setup_graceful_shutdown() {
@@ -59,17 +96,17 @@ async fn setup_graceful_shutdown() {
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
-    let (docs_root, explicit_config, bind_address, rust_log) = parse_args(std::env::args())?;
+    let cli = Cli::parse();
 
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| rust_log.clone().into()),
+                .unwrap_or_else(|_| cli.rust_log().to_string().into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
-    let file_reader = FileReader::new(docs_root.to_string_lossy().to_string())?;
-    let cfg = Config::load(explicit_config.as_deref())?;
+    let file_reader = FileReader::new(cli.docs_root().to_string_lossy().to_string())?;
+    let cfg = Config::load(cli.config().map(std::path::PathBuf::as_path))?;
     let mut resources: BTreeMap<DocumentKey, ResourceInfo> = BTreeMap::new();
 
     let scan_start = std::time::Instant::now();
@@ -166,71 +203,15 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let router = axum::Router::new().nest_service("/mcp", service);
-    let tcp_listener = tokio::net::TcpListener::bind(&bind_address).await?;
+    let tcp_listener = tokio::net::TcpListener::bind(cli.bind_address()).await?;
     info!(
         "MCP server started on {}, docs_root: {}, RUST_LOG: {}",
-        bind_address,
+        cli.bind_address(),
         file_reader.docs_root(),
-        rust_log
+        cli.rust_log()
     );
     let _ = axum::serve(tcp_listener, router)
         .with_graceful_shutdown(setup_graceful_shutdown())
         .await;
     Ok(())
-}
-
-fn parse_args(
-    mut args: impl Iterator<Item = String>,
-) -> anyhow::Result<(
-    std::path::PathBuf,
-    Option<std::path::PathBuf>,
-    String,
-    String,
-)> {
-    let _exe = args.next();
-
-    let mut docs_root: Option<std::path::PathBuf> = None;
-    let mut config: Option<std::path::PathBuf> = None;
-    let mut bind_address: Option<String> = None;
-    let mut rust_log: Option<String> = None;
-
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--docs-root" => {
-                let value = args
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("--docs-root requires a value"))?;
-                docs_root = Some(std::path::PathBuf::from(value));
-            }
-            "--config" => {
-                let value = args
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("--config requires a value"))?;
-                config = Some(std::path::PathBuf::from(value));
-            }
-            "--bind-address" => {
-                let value = args
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("--bind-address requires a value"))?;
-                bind_address = Some(value);
-            }
-            "--rust-log" => {
-                let value = args
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("--rust-log requires a value"))?;
-                rust_log = Some(value);
-            }
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Unknown argument '{}'. Expected --docs-root <path> [--config <path>] [--bind-address <addr>] [--rust-log <level>]",
-                    arg
-                ));
-            }
-        }
-    }
-
-    let docs_root = docs_root.ok_or_else(|| anyhow::anyhow!("--docs-root is required"))?;
-    let bind_address = bind_address.unwrap_or_else(|| "127.0.0.1:8010".to_string());
-    let rust_log = rust_log.unwrap_or_else(|| "info".to_string());
-    Ok((docs_root, config, bind_address, rust_log))
 }
