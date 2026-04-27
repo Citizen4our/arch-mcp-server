@@ -6,6 +6,7 @@ services:
     command: ["./arch-mcp-server", "--docs-root", "/app/docs/content", "--bind-address", "0.0.0.0:8010", "--rust-log", "info"]
     volumes:
       - ./example_docs/docs:/app/docs:ro
+      - ./arch-mcp.toml:/app/arch-mcp.toml:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/mcp"]
